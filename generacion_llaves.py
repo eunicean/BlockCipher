@@ -35,6 +35,8 @@ def generate_aes_key(key_size: int = 256):
     Genera una clave AES aleatoria.
    
     """
+    if key_size not in (128, 192, 256):
+        raise ValueError("key_size debe ser 128, 192 o 256 bits")
     return secrets.token_bytes(key_size // 8)
 
 
