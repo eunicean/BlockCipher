@@ -43,7 +43,6 @@ def generate_iv(block_size: int = 8) -> bytes:
     Genera un vector de inicialización (IV) aleatorio.
 
     """
-    # TODO: Implementar
-    pass
+    return secrets.token_bytes(block_size)
 
-print(generate_aes_key(10))
+print(generate_iv())
