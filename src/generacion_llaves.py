@@ -46,5 +46,3 @@ def generate_iv(block_size: int = 8) -> bytes:
 
     """
     return secrets.token_bytes(block_size)
-
-print(generate_iv())
