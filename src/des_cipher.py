@@ -4,9 +4,7 @@ from Crypto.Cipher import DES
 from generacion_llaves import generate_des_key
 from manual_padding import pkcs7_pad, pkcs7_unpad
 
-
 BLOCK_SIZE = 8
-
 
 def des_encrypt_ecb(plaintext: bytes, key: bytes) -> bytes:
     """
@@ -21,7 +19,6 @@ def des_encrypt_ecb(plaintext: bytes, key: bytes) -> bytes:
     ciphertext = cipher.encrypt(padded_data)
 
     return ciphertext
-
 
 def des_decrypt_ecb(ciphertext: bytes, key: bytes) -> bytes:
     """
