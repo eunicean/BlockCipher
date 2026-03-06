@@ -212,14 +212,94 @@ print(f"  Iguales: {ct3 == ct4}") # Es FALSE, es correcto
 Si se reutiliza el IV con la misma clave, alguien puede realizar un ataque de análisis diferencial comparando dos ciphertexts del mismo mensaje puede detectar en qué bloque difieren, filtrando información sobre el cambio en el plaintext. En el caso extremo si IV=0 es siempre fijo, CBC se degrada a algo similar a ECB para mensajes con prefijos comunes. En la implementación del proyecto el IV se genera con secrets.token_bytes(16) por cada cifrado y se concatena al inicio del ciphertext (iv + ciphertext) para que el receptor pueda extraerlo al descifrar.
 
 ### **2.5 Padding**
+**¿Qué es el padding y por qué es necesario?**
+
+Los cifrados de bloque operan sobre bloques de tamaño fijo (8 bytes en DES/3DES, 16 bytes en AES). Si el mensaje no es múltiplo exacto del tamaño de bloque, se necesita **completar el último bloque** con bytes extra. PKCS#7 define que el valor de cada byte de padding es igual a la cantidad de bytes agregados.
+
+**Demostración con pkcs7_pad**
+```python
+from manual_padding import pkcs7_pad, pkcs7_unpad
+
+# Mensaje de 5 bytes -> bloque de 8 -> faltan 3 bytes -> padding: 0x03 0x03 0x03
+m1 = b"HOLA!"
+print(pkcs7_pad(m1, 8).hex())
+# 484f4c4121 03 03 03
+#  H O L A !  padding: 3 bytes con valor 3
+
+# Mensaje de 8 bytes (exactamente un bloque) -> se agrega un bloque completo de 0x08
+m2 = b"12345678"
+print(pkcs7_pad(m2, 8).hex())
+# 3132333435363738 0808080808080808
+#     12345678      8 bytes con valor 8
+
+# Mensaje de 10 bytes -> bloque de 16 (AES) -> faltan 6 bytes -> padding: 0x06 x6
+m3 = b"HolaMundo!"
+print(pkcs7_pad(m3, 16).hex())
+# 486f6c614d756e646f21 06060606 0606
+#       HolaMundo!       6 bytes con valor 6
+```
+
+**Verificación de unpad**
+
+```python
+for m, bs in [(b"HOLA!", 8), (b"12345678", 8), (b"HolaMundo!", 16)]:
+    padded = pkcs7_pad(m, bs)
+    recovered = pkcs7_unpad(padded)
+    assert recovered == m
+    print(f"✔ '{m}' → padded → unpadded = '{recovered}'")
+```
 
 
 ### **2.6 Recomendaciones de Uso**
+**Tabla comparativa de modos**
+| Modo | Requiere IV | Paralelizable (cifrado) | Paralelizable (descifrado) | Autenticación | Casos de uso recomendados | Desventajas |
+|------|------------|------------------------|--------------------------|---------------|--------------------------|-------------|
+| **ECB** | No | Sí | Sí | No | No recomendado en producción | Filtra patrones, no semántico seguro |
+| **CBC** | Sí | No | Sí | No | Cifrado de archivos, disco | Secuencial al cifrar, vulnerable a padding oracle si no hay MAC |
+| **CTR** | Sí (nonce) | Sí | Sí | No | Streams, comunicación en tiempo real | Reutilizar nonce compromete todo |
+| **GCM** | Sí (nonce) | Sí | Sí | Sí (AEAD) | TLS, APIs, almacenamiento seguro | Nonce no debe repetirse jamás |
 
+**Recomendado**
+GCM Galois/Counter Mode
 
-## **Documentación**
-## **Comparación visual de ECB vs CBC**
+Es actualmente el estándar recomendado porque combina cifrado y autenticación en una sola operación, protegiéndose contra manipulación del ciphertext com ataques de padding oracle, bit-flipping, entre otros.
 
+[Código de python](tests\aes_gcm.py):
 ```python
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
 
+key = get_random_bytes(32)   # AES-256
+nonce = get_random_bytes(16)
+
+# Cifrar
+cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+ciphertext, tag = cipher.encrypt_and_digest(b"Mensaje secreto")
+
+# Descifrar y verificar integridad
+cipher2 = AES.new(key, AES.MODE_GCM, nonce=nonce)
+plaintext = cipher2.decrypt_and_verify(ciphertext, tag)
+print(plaintext)  # b"Mensaje secreto"
 ```
+
+Código en node.js
+```javascript
+const crypto = require('crypto');
+
+const key = crypto.randomBytes(32);    // AES-256
+const iv  = crypto.randomBytes(16);
+
+// Cifrar
+const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+let ct = cipher.update('Mensaje secreto', 'utf8', 'hex');
+ct += cipher.final('hex');
+const tag = cipher.getAuthTag();
+
+// Descifrar
+const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+decipher.setAuthTag(tag);
+let pt = decipher.update(ct, 'hex', 'utf8');
+pt += decipher.final('utf8');
+console.log(pt);  // "Mensaje secreto"
+```
+
