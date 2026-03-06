@@ -116,10 +116,100 @@ encrypt_image("images/original.bmp", "images/encrypted_cbc.bmp", encrypt_aes_cbc
 ```
 
 ### **2.3 Vulnerabilidad de ECB**
+**¿Por qué no usar ECB con datos sensibles?**
 
+ECB cifra cada bloque de manera independiente, por lo que dos bloques de texto plano iguales siempre producen el mismo bloque cifrado. Esto permite que un atacante pueda identificar patrones repetidos en el mensaje sin descifrarlo, deducir la estructura o contenido del mensaje (ej: el mismo campo en distintos registros) y realizar ataques de reordenamiento o sustitución de bloques.
+
+**Demostración con texto repetido**
+[archivo](tests\ecbexample.py)
+``` python
+import sys
+import os
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+
+module_dir = os.path.join(os.getcwd(), 'src')
+sys.path.append(module_dir)
+
+from generacion_llaves import generate_aes_key, generate_iv
+
+key = generate_aes_key(key_size=128)
+message = b"ATAQUE  ATAQUE  ATAQUE  "  # 3 bloques de 8 bytes idénticos (ajustado a 16 con espacios)
+
+# ECB
+cipher_ecb = AES.new(key, AES.MODE_ECB)
+ct_ecb = cipher_ecb.encrypt(pad(message, 16))
+
+# CBC
+iv = generate_iv(block_size=16)
+cipher_cbc = AES.new(key, AES.MODE_CBC, iv)
+ct_cbc = cipher_cbc.encrypt(pad(message, 16))
+
+print("ECB (hex):")
+for i in range(0, len(ct_ecb), 16):
+    print(f"  Bloque {i//16}: {ct_ecb[i:i+16].hex()}")
+
+print("\nCBC (hex):")
+for i in range(0, len(ct_cbc), 16):
+    print(f"  Bloque {i//16}: {ct_cbc[i:i+16].hex()}")
+```
+
+![ecb exmaple](images\ssresults\ecb.png)
+
+El encriptado de ECB tiene partes identicas es su inicio y se parecen en cierta medida. Si se cifran registros de base de datos con ECB como contraseñas, NIT, salarios, alguien que observe el ciphertext puede detectar qué usuarios tienen la misma contraseña o el mismo valor en un campo, sin necesidad de descifrar nada. 
+
+Esto pidría romper la seguridad de sistemas de votación electrónica y bases de datos médicas en la práctica.
 
 ### **2.4 Vector de Inicialización**
 
+**¿Qué es el IV y para qué sirve?**
+
+El IV (vector de inicialización) es un valor aleatorio que se XORea con el primer bloque de texto plano antes de cifrarlo en CBC. Su propósito es asegurar que el mismo mensaje cifrado dos veces produzca ciphertexts distintos, incluso con la misma clave. ECB no usa IV porque cifra cada bloque de forma independiente pero eso tambien es su vulnerabilidad.
+
+**Experimento de mismo mensaje, IVs distintos**
+[archivo](tests\ivtest.py)
+```python
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+
+import sys
+import os
+module_dir = os.path.join(os.getcwd(), 'src')
+sys.path.append(module_dir)
+
+from generacion_llaves import generate_aes_key, generate_iv
+
+key = generate_aes_key(key_size=128)
+message = b"Mensaje secreto!"
+
+# Caso 1: mismo IV
+iv_fijo = b'\x00' * 16
+cipher1 = AES.new(key, AES.MODE_CBC, iv_fijo)
+cipher2 = AES.new(key, AES.MODE_CBC, iv_fijo)
+ct1 = cipher1.encrypt(pad(message, 16))
+ct2 = cipher2.encrypt(pad(message, 16))
+print("Mismo IV:")
+print(f"  CT1: {ct1.hex()}")
+print(f"  CT2: {ct2.hex()}")
+print(f"  Iguales: {ct1 == ct2}")   # Es TRUE, es peligroso
+
+# Caso 2: IVs distintos
+iv1 = generate_iv(block_size=16)
+iv2 = generate_iv(block_size=16)
+cipher3 = AES.new(key, AES.MODE_CBC, iv1)
+cipher4 = AES.new(key, AES.MODE_CBC, iv2)
+ct3 = cipher3.encrypt(pad(message, 16))
+ct4 = cipher4.encrypt(pad(message, 16))
+print("\nIVs diferentes:")
+print(f"  CT3: {ct3.hex()}")
+print(f"  CT4: {ct4.hex()}")
+print(f"  Iguales: {ct3 == ct4}") # Es FALSE, es correcto
+```
+![iv test](images\ssresults\ivtest.png)
+
+### ¿Qué pasa si un atacante ve mensajes con el mismo IV?
+
+Si se reutiliza el IV con la misma clave, alguien puede realizar un ataque de análisis diferencial comparando dos ciphertexts del mismo mensaje puede detectar en qué bloque difieren, filtrando información sobre el cambio en el plaintext. En el caso extremo si IV=0 es siempre fijo, CBC se degrada a algo similar a ECB para mensajes con prefijos comunes. En la implementación del proyecto el IV se genera con secrets.token_bytes(16) por cada cifrado y se concatena al inicio del ciphertext (iv + ciphertext) para que el receptor pueda extraerlo al descifrar.
 
 ### **2.5 Padding**
 
@@ -129,3 +219,7 @@ encrypt_image("images/original.bmp", "images/encrypted_cbc.bmp", encrypt_aes_cbc
 
 ## **Documentación**
 ## **Comparación visual de ECB vs CBC**
+
+```python
+
+```
