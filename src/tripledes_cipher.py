@@ -4,6 +4,7 @@
 from Crypto.Cipher import DES3
 from Crypto.Util.Padding import pad, unpad
 from generacion_llaves import generate_3des_key, generate_iv
+from manual_padding import pkcs7_pad,pkcs7_unpad
 BLOCK_SIZE = 8
 
 # uso de chat principalmente para saber como usar las librerías y completar verificar cosas que faltan
@@ -27,7 +28,7 @@ def encrypt_3des_cbc(plaintext: bytes, key: bytes, iv: bytes) -> bytes:
 
     cipher = DES3.new(key, DES3.MODE_CBC, iv)
 
-    ciphertext = cipher.encrypt(pad(plaintext, BLOCK_SIZE))
+    ciphertext = cipher.encrypt(pkcs7_pad(plaintext, BLOCK_SIZE))
 
     return ciphertext
 
@@ -59,7 +60,7 @@ def decrypt_3des_cbc(ciphertext: bytes, key: bytes, iv: bytes) -> bytes:
 
     decrypted_padded = cipher.decrypt(ciphertext)
 
-    decrypted = unpad(decrypted_padded, BLOCK_SIZE)
+    decrypted = pkcs7_unpad(decrypted_padded)
 
     return decrypted
 
